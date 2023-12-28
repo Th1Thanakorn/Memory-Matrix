@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor.SearchService;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
 
 public class Matrix : MonoBehaviour
 {
