@@ -1,68 +1,108 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using UnityEditor;
+using UnityEditor.SearchService;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 public class Matrix : MonoBehaviour
 {
-    public int size = 10;
-    public int gridSize = 4;
+    public int size = 14;
+    public int gridSize = 5;
     public float gridSpacing = 0.8f;
-    public float flipTime = 3f;
+    public float flipTime = 2f;
     public int flipCount = 5;
 
     private List<GameObject> grids = new List<GameObject>();
+    private List<GameObject> wrongCopy = new List<GameObject>();
     private List<int> randomList = new List<int>();
+    private List<int> clicked = new List<int>();
 
     private string gridGray = "#4A4A4A";
     private string gridBlue = "#279BB7";
-    private float timer = 0f;
-    private bool flipOn = false;
+    private string gridRed = "#FF4C4C";
+    private float timer = -2.5f;
+    private bool doneRandom = false;
+    private bool gameShowed = false;
+    private bool playerMode = false;
+    private bool gameFailed = false;
+    private int failedCount = 0;
+
+    private GameObject cell;
+    private GameObject correct;
+    private GameObject wrong;
 
     void Start()
     {
-        gameObject.transform.position = Vector3.zero;
-        gameObject.transform.localScale = Vector3.one * size;
+        this.cell = GameObject.Find("Cell");
+        this.correct = GameObject.Find("Correct");
+        this.wrong = GameObject.Find("Wrong");
 
-        DrawGrid();
-        for (int i = 0; i < this.grids.Count; i++)
-        {
-            this.SetGridColor(gridGray, i);
-        }
+        TableStart();
     }
 
     private void Update()
     {
-        if (timer < flipTime)
+        if (!playerMode)
         {
-            timer += Time.deltaTime;
-        }
-        else
-        {
-            if (flipOn)
+            if (Mathf.Abs(timer + 1f) <= 0.1f && !this.doneRandom)
             {
-                for (int i = 0; i < this.randomList.Count; i++)
+                // Restore clicked
+                foreach (int clicked in this.clicked)
                 {
-                    this.SetGridColor(gridGray, this.randomList[i]);
+                    this.SetGridColor(gridGray, clicked);
+                    this.FlipCell(clicked, false);
                 }
+                foreach (GameObject wrong in this.wrongCopy)
+                {
+                    Destroy(wrong);
+                }
+
+                this.clicked.Clear();
+                this.wrongCopy.Clear();
+
+                RandomNumber();
+
+                correct.SetActive(false);
+                wrong.SetActive(false);
+
+                this.doneRandom = true;
+            }
+
+            if (Mathf.Abs(timer) <= 0.1f && !this.gameShowed)
+            {
+                foreach (var index in this.randomList)
+                {
+                    SetGridColor(gridBlue, index);
+                    FlipCell(index, false);
+
+                    PlaySound(0);
+                }
+
+                this.gameShowed = true;
+            }
+
+            if (timer < flipTime)
+            {
+                timer += Time.deltaTime;
             }
             else
             {
-                this.RandomNumber();
-                for (int i = 0; i < this.randomList.Count; i++)
+                foreach (var index in this.randomList)
                 {
-                    this.SetGridColor(gridBlue, this.randomList[i]);
+                    SetGridColor(gridGray, index);
+                    FlipCell(index, false);
+
+                    PlaySound(0);
                 }
+                this.playerMode = true;
+                timer = 0f;
             }
-            flipOn = !flipOn;
-            timer = 0f;
         }
     }
 
     public void OnMouseDown()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (this.playerMode && Input.GetMouseButtonDown(0))
         {
             Collider2D collider = gameObject.GetComponent<Collider2D>();
             Vector3 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -86,17 +126,33 @@ public class Matrix : MonoBehaviour
 
                     int index = gridSize * i + j;
 
-                    /*Debug.Log("Index: " + index + ", Cell Min: " + cellMin.ToString());
-                    Debug.Log("Index: " + index + ", Cell Max: " + cellMax.ToString());
-                    Debug.Log("Mouse: " + localMousePos.ToString());*/
-
                     if (cellMin.x <= localMousePos.x && cellMin.y <= localMousePos.y && cellMax.x >= localMousePos.x && cellMax.y >= localMousePos.y)
                     {
-                        Debug.Log("Mouse Clicked At index: " + index);
+                        this.GridClicked(index);
                         return;
                     }
                 }
             }
+        }
+    }
+
+    void TableStart()
+    {
+        gameObject.transform.position = Vector3.zero;
+        gameObject.transform.localScale = Vector3.one * size;
+
+        correct.SetActive(false);
+        correct.transform.position = Vector3.zero;
+        correct.transform.localScale *= size / 1.5f;
+
+        wrong.SetActive(false);
+        wrong.transform.position = Vector3.zero;
+        wrong.transform.localScale *= size / 1.5f;
+
+        DrawGrid();
+        for (int i = 0; i < this.grids.Count; i++)
+        {
+            this.SetGridColor(gridGray, i);
         }
     }
 
@@ -107,7 +163,7 @@ public class Matrix : MonoBehaviour
         float cellSpacing = gridSpacing / (float)gridSize;
         float cellSize = (bigSquareSize.x - (gridSize + 1) * cellSpacing) / gridSize;
 
-        GameObject cellPrefab = GameObject.Find("Cell");
+        GameObject cellPrefab = this.cell;
         cellPrefab.transform.localScale = new Vector3(cellSize, cellSize, 1f);
 
         for (int i = 0; i < gridSize; i++)
@@ -155,5 +211,118 @@ public class Matrix : MonoBehaviour
 
             this.randomList.Add(rand);
         }
+    }
+
+    void GridClicked(int index)
+    {
+        if (!clicked.Contains(index))
+        {
+            clicked.Add(index);
+
+            // Wrong Selection
+            if (!this.randomList.Contains(index))
+            {
+                this.SetGridColor(gridRed, index);
+                this.gameFailed = true;
+                this.failedCount++;
+
+                int i = index / this.gridSize;
+                int j = index % this.gridSize;
+
+                GameObject obj = Instantiate(this.wrong, this.getCellMiddle(i, j), Quaternion.identity);
+                obj.SetActive(true);
+
+                this.wrongCopy.Add(obj);
+            }
+            else
+            {
+                this.SetGridColor(gridBlue, index);
+                this.FlipCell(index, true);
+            }
+
+            if (this.failedCount > 2)
+            {
+                // Flip all correct grid
+                foreach (int correct in this.randomList)
+                {
+                    if (!clicked.Contains(correct))
+                    {
+                        this.clicked.Add(correct);
+                        this.SetGridColor(gridBlue, correct);
+                        this.FlipCell(correct, false);
+                    }
+                }
+                PlaySound(0);
+                this.TriggerRestart();
+                return;
+            }
+
+            bool allCorrect = true;
+            foreach (int correct in this.randomList)
+            {
+                if (!clicked.Contains(correct))
+                {
+                    allCorrect = false;
+                    break;
+                }
+            }
+
+            if (allCorrect)
+            {
+                if (!this.gameFailed)
+                {
+                    this.correct.SetActive(true);
+                }
+                this.TriggerRestart();
+            }
+        }
+    }
+
+    void FlipCell(int index, bool playSound)
+    {
+        Animator animator = this.grids[index].GetComponent<Animator>();
+        animator.SetTrigger("Flip");
+
+        if (playSound)
+        {
+            PlaySound(index);
+        }
+    }
+
+    void TriggerRestart()
+    {
+        this.timer = -2.5f;
+        this.gameFailed = false;
+        this.failedCount = 0;
+        this.randomList.Clear();
+        this.gameShowed = false;
+        this.doneRandom = false;
+        this.playerMode = false;
+    }
+
+    Vector2 getCellMiddle(int row, int column)
+    {
+        Collider2D collider = gameObject.GetComponent<Collider2D>();
+
+        Vector2 min = collider.bounds.min;
+        Vector2 max = collider.bounds.max;
+
+        float cellSpacing = gridSpacing / (float)gridSize;
+        float cellSize = (max.x - min.x - (gridSize + 1) * cellSpacing) / gridSize;
+
+        float cellX = min.x + cellSpacing + column * (cellSize + cellSpacing);
+        float cellY = -min.y - cellSpacing - (row + 1) * (cellSize + cellSpacing);
+
+        Vector2 cellMin = new Vector2(cellX, cellY);
+        Vector2 cellMax = new Vector2(cellX + cellSize, cellY + cellSize);
+
+        return new Vector2((cellMin.x + cellMax.x) / 2f, (cellMin.y + cellMax.y) / 2f);
+    }
+
+    void PlaySound(int index)
+    {
+        AudioSource source = this.grids[index].GetComponent<AudioSource>();
+        source.volume = 2f;
+        source.Play();
     }
 }
