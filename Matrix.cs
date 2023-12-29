@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Matrix : MonoBehaviour
 {
@@ -23,11 +25,14 @@ public class Matrix : MonoBehaviour
     private bool gameShowed = false;
     private bool playerMode = false;
     private bool gameFailed = false;
+    private bool wait = false;
     private int failedCount = 0;
+    private int score = 0;
 
     private GameObject cell;
     private GameObject correct;
     private GameObject wrong;
+    public GameObject scoreText;
 
     void Start()
     {
@@ -35,6 +40,7 @@ public class Matrix : MonoBehaviour
         this.correct = GameObject.Find("Correct");
         this.wrong = GameObject.Find("Wrong");
 
+        DefaultScale();
         TableStart();
     }
 
@@ -134,18 +140,23 @@ public class Matrix : MonoBehaviour
         }
     }
 
-    void TableStart()
+    void DefaultScale()
     {
-        gameObject.transform.position = Vector3.zero;
-        gameObject.transform.localScale = Vector3.one * size;
-
-        correct.SetActive(false);
         correct.transform.position = Vector3.zero;
         correct.transform.localScale *= size / 1.5f;
+        correct.SetActive(false);
 
-        wrong.SetActive(false);
         wrong.transform.position = Vector3.zero;
         wrong.transform.localScale *= size / 1.5f;
+        wrong.SetActive(false);
+    }
+
+    void TableStart()
+    {
+        this.cell.SetActive(true);
+
+        gameObject.transform.position = Vector3.zero;
+        gameObject.transform.localScale = Vector3.one * size;
 
         DrawGrid();
         for (int i = 0; i < this.grids.Count; i++)
@@ -272,6 +283,7 @@ public class Matrix : MonoBehaviour
                     this.correct.SetActive(true);
                 }
                 this.TriggerRestart();
+                this.CalculateScore();
             }
         }
     }
@@ -298,6 +310,11 @@ public class Matrix : MonoBehaviour
         this.playerMode = false;
     }
 
+    IEnumerator waitFor(int secs)
+    {
+        yield return new WaitForSeconds(1);
+    }
+
     Vector2 getCellMiddle(int row, int column)
     {
         Collider2D collider = gameObject.GetComponent<Collider2D>();
@@ -322,5 +339,43 @@ public class Matrix : MonoBehaviour
         AudioSource source = this.grids[index].GetComponent<AudioSource>();
         source.volume = 2f;
         source.Play();
+    }
+
+    void CalculateScore()
+    {
+        int scorePerFlip = (int) (Math.Round((float) this.flipCount / this.grids.Count, 2) * 1000f);
+        int wrong = (int) Mathf.Pow(2, this.failedCount) * scorePerFlip;
+        int score = this.flipCount * scorePerFlip - wrong;
+
+        this.score += score;
+
+        Text text = this.scoreText.GetComponent<Text>();
+        text.text = "";
+        text.text = "Score: " + this.score;
+    }
+
+    void GenerateNew()
+    {
+        bool flag = this.flipCount <= this.grids.Count / 2;
+
+        if (!flag)
+        {
+            this.gridSize++;
+            this.flipCount += UnityEngine.Random.Range(1, 3);
+
+            foreach (GameObject grid in this.grids)
+            {
+                Destroy(grid);
+            }
+
+            this.grids.Clear();
+            this.clicked.Clear();
+
+            this.wait = true;
+        }
+        else
+        {
+            this.flipCount++;
+        }
     }
 }
