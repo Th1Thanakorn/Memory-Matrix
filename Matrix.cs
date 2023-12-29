@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class Matrix : MonoBehaviour
@@ -11,6 +12,10 @@ public class Matrix : MonoBehaviour
     public float gridSpacing = 0.8f;
     public float flipTime = 2f;
     public int flipCount = 5;
+
+    public GameObject scoreText;
+    public GameObject trialText;
+    public GameObject trialDoneText;
 
     private List<GameObject> grids = new List<GameObject>();
     private List<GameObject> wrongCopy = new List<GameObject>();
@@ -26,19 +31,28 @@ public class Matrix : MonoBehaviour
     private bool playerMode = false;
     private bool gameFailed = false;
     private bool wait = false;
+    private bool trialDone = false;
     private int failedCount = 0;
     private int score = 0;
+    private int trial = 0;
 
     private GameObject cell;
     private GameObject correct;
     private GameObject wrong;
-    public GameObject scoreText;
+
+    private Profiler profiler;
 
     void Start()
     {
         this.cell = GameObject.Find("Cell");
         this.correct = GameObject.Find("Correct");
         this.wrong = GameObject.Find("Wrong");
+
+        this.trial = 1;
+
+        this.profiler = GameObject.Find("Profiler").GetComponent<Profiler>();
+
+        this.trialDoneText.SetActive(false);
 
         DefaultScale();
         TableStart();
@@ -74,14 +88,17 @@ public class Matrix : MonoBehaviour
 
             if (Mathf.Abs(timer) <= 0.1f && !this.gameShowed)
             {
-                foreach (var index in this.randomList)
+                // Game Continue
+                if (!this.trialDone)
                 {
-                    SetGridColor(gridBlue, index);
-                    FlipCell(index, false);
+                    foreach (var index in this.randomList)
+                    {
+                        SetGridColor(gridBlue, index);
+                        FlipCell(index, false);
 
-                    PlaySound(0);
+                        PlaySound(0);
+                    }
                 }
-
                 this.gameShowed = true;
             }
 
@@ -91,6 +108,14 @@ public class Matrix : MonoBehaviour
             }
             else
             {
+                // Stop
+                if (this.trialDone)
+                {
+                    this.profiler.Save(this.score);
+                    SceneManager.LoadScene(0);
+                    return;
+                }
+
                 foreach (var index in this.randomList)
                 {
                     SetGridColor(gridGray, index);
@@ -100,6 +125,27 @@ public class Matrix : MonoBehaviour
                 }
                 this.playerMode = true;
                 timer = 0f;
+            }
+
+            // Game Termination
+            if (this.trialDone && this.timer > 1f)
+            {
+                float velocity = this.timer * this.timer * 0.4f;
+                gameObject.transform.position -= new Vector3(velocity, 0, 0);
+                foreach (GameObject obj in this.grids)
+                {
+                    obj.transform.position -= new Vector3(velocity, 0, 0);
+                }
+
+                // End run
+                if (Mathf.Abs(this.timer - 1) < Time.deltaTime)
+                {
+                    Text text = this.trialDoneText.GetComponent<Text>();
+                    Color color = text.color;
+                    text.CrossFadeAlpha(1.0f, this.flipTime - 1.1f, false);
+                    text.color = color;
+                    this.trialDoneText.SetActive(true);
+                }
             }
         }
     }
@@ -308,11 +354,17 @@ public class Matrix : MonoBehaviour
         this.gameShowed = false;
         this.doneRandom = false;
         this.playerMode = false;
-    }
 
-    IEnumerator waitFor(int secs)
-    {
-        yield return new WaitForSeconds(1);
+        this.trial++;
+        if (this.trial > 2)
+        {
+            this.trialDone = true;
+        }
+        else
+        {
+            Text text = this.trialText.GetComponent<Text>();
+            text.text = "Trial: " + this.trial;
+        }
     }
 
     Vector2 getCellMiddle(int row, int column)
